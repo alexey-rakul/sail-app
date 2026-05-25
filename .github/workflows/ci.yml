@@ -1,0 +1,55 @@
+name: CI-Pipeline
+
+# Гитхаб запустит этот сценарий, как только увидит пуш в ветку main
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  laravel-tests:
+    runs-on: ubuntu-latest
+
+    # Поднимаем временную базу данных MySQL прямо внутри Гитхаба
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: testing
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    # 1. Скачиваем код твоего репозитория на виртуальную машину GitHub
+    - uses: actions/checkout@v4
+
+    # 2. Устанавливаем PHP нужной версии со всеми расширениями
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.5'
+        extensions: mbstring, xml, ctype, iconv, mysql, pdo_mysql, bcmath
+
+    # 3. Создаем тестовый файл окружения .env
+    - name: Copy .env
+      run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+    # 4. Устанавливаем зависимости (папку vendor) без девелоперского мусора
+    - name: Install Dependencies
+      run: composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+    # 5. Генерируем ключ приложения
+    - name: Generate key
+      run: php artisan key:generate
+
+    # 6. ЗАПУСКАЕМ ТВОИ ТЕСТЫ!
+    - name: Run Migrations & Tests
+      env:
+        DB_CONNECTION: mysql
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_DATABASE: testing
+        DB_USERNAME: root
+        DB_PASSWORD: ""
+      run: php artisan test
